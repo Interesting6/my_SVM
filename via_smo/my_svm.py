@@ -82,7 +82,7 @@ class SVM(object):
         """
         self.error_tmp[alpha_index_i] = [1, error_i] # 用来标记已被优化
         candidate_alpha_list = np.nonzero(self.error_tmp[:, 0].A)[0]  # 因为是列向量，列数[1]都为0，只需记录行数[0]
-        max_step,max_step,error_j = 0,0,0
+        max_step,alpha_index_j,error_j = 0,0,0
 
         if len(candidate_alpha_list)>1:
             for alpha_index_k in candidate_alpha_list:
