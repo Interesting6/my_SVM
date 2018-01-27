@@ -57,10 +57,15 @@ class SVM(object):
         """
         if type_ == "predict":
             result = self._bias # 在训练时传入的为0故每次均初始为0，预测时（训练好后self._bias为b）为为训练好的b
+            tmp = np.multiply(self._support_multipliers, self._support_vector_labels)
+            for t_i, x_i in zip(tmp, self._support_vectors,):
+                result += t_i * self._kernel(x_i, x)
         else: # "train"
             result = 0.0
-        for z_i, x_i, y_i in zip(self._support_multipliers,self._support_vectors,self._support_vector_labels):
-            result += z_i * y_i * self._kernel(x_i.A[0], x.A[0])
+            x = x.A.flatten().tolist()
+            vector_indices_x = self._X_train.tolist().index(x)
+            result += np.multiply(self._support_multipliers,self._support_vector_labels).T * \
+                      self._K[self.support_vector_indices, vector_indices_x]
         return np.sign(result).item()
 
 
