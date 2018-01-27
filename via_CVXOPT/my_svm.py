@@ -52,9 +52,8 @@ class SVM(object):
         print("svm model training done")
         return self
 
-
     def predict(self, x,type_="predict"):
-        """
+        """ predict one vector
         Computes the SVM prediction on the given features x.
         """
         if type_ == "predict":
@@ -113,43 +112,12 @@ class SVM(object):
         accuracy = correct / n_samples
         return  accuracy
 
-    def get_function(self):
-        if self._kernel == kernel.Kernel.linear():
-            tmp = map(lambda x,y,z:x*y*z, self._support_multipliers, self._support_vector_labels,self._support_vectors)
-            self.w = sum(tmp)
-            b = self._bias
-            return lambda x:np.dot(self.w,x)+b
-        elif "gaussian" in str(self._kernel):
-            kernel_ = self._kernel
-            tmp = np.array(list(map(lambda a, b: a * b , self._support_multipliers, self._support_vector_labels,)))
-            return lambda x:np.dot(tmp,np.array(list(
-                map(kernel_,self._support_vectors,[x]*self._support_vectors_num)
-            )))+ self._bias
-        else:
-            return 0
-
-
-    def predict_data_set(self,x):
-        if self._kernel == kernel.Kernel.linear():
-            tmp = map(lambda x,y,z:x*y*z, self._support_multipliers, self._support_vector_labels,self._support_vectors)
-            self.w = sum(tmp)
-            b = self._bias
-            # return lambda x:np.dot(self.w,x)+b
-            predict_f = lambda x: np.dot(self.w, x) + b
-            return np.array(list(map(predict_f, x)))
-        elif "gaussian" in str(self._kernel):
-            tmp_li = []
-            for x_i in x:
-                result = self._bias
-                kernel_ = self._kernel
-                for a_i,y_i,sv_i in zip(self._support_multipliers,self._support_vector_labels,
-                        self._support_vectors):
-                    result += a_i*y_i*kernel_(sv_i,x_i)
-                tmp_li.append(result)
-            return np.array(tmp_li)
-        else:
-            return 0
-
+    def predict_data_set(self, data_x):
+        # predict lots of vector
+        predict_f = lambda x: self._bias + sum(map(lambda a,b,c,d:a * b *
+            self._kernel(c, d),self._support_multipliers, self._support_vector_labels,
+            self._support_vectors,[x]*self._support_vectors_num))
+        return np.array(list(map(predict_f, data_x)))
 
     def show_data_set(self, X, y,):
         # 作training sample数据点的图
