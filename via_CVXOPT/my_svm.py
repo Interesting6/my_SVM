@@ -1,6 +1,7 @@
 import numpy as np
+import kernel
 import cvxopt.solvers
-import logging
+import matplotlib.pyplot as plt
 
 
 MIN_SUPPORT_VECTOR_MULTIPLIER = 1e-5
@@ -8,7 +9,7 @@ MIN_SUPPORT_VECTOR_MULTIPLIER = 1e-5
 
 class SVM(object):
     """docstring for SVM"""
-    def __init__(self,kernel,c):
+    def __init__(self,kernel,c=1):
         self._kernel = kernel
         self._c = c
 
@@ -25,15 +26,17 @@ class SVM(object):
         """Given the training features X with labels y, returns a SVM
         predictor representing the trained SVM.
         """
-        self._X_train,self._y_train = X.A, y.A.flatten()
+        self._X_train,self._y_train = (X.A, y.A.flatten()) if type(X)==np.matrixlib.defmatrix.matrix else (X,y)
+
         lagrange_multipliers = self._compute_multipliers(X, y)
         # alpha > 0 时，点位于软间隔内的支持向量
-        self.support_vector_indices = lagrange_multipliers > MIN_SUPPORT_VECTOR_MULTIPLIER
+        self._support_vector_indices = lagrange_multipliers > MIN_SUPPORT_VECTOR_MULTIPLIER
+        self._support_vectors_num = len(self._support_vector_indices)
         # 统一为数组形式，使得行（或列）向量为一维数组，X为二维数组
-        self._support_multipliers = lagrange_multipliers[self.support_vector_indices]
-        self._support_vectors = X.A[self.support_vector_indices]
-        self._support_vector_labels = y.A.flatten()[self.support_vector_indices]
-        self._weights = lagrange_multipliers
+        self._support_multipliers = lagrange_multipliers[self._support_vector_indices]
+        self._support_vectors = self._X_train[self._support_vector_indices]
+        self._support_vector_labels = self._y_train[self._support_vector_indices]
+        # self._weights = lagrange_multipliers
 
         # http://www.cs.cmu.edu/~guestrin/Class/10701-S07/Slides/kernels.pdf
         # bias = y_k - \sum z_i y_i  K(x_k, x_i)  对于软间隔支持向量有这个b=y真-Σalpha*y*K
@@ -48,7 +51,7 @@ class SVM(object):
         # logging.info("Support vector labels: %s", self._support_vector_labels)
         print("svm model training done")
         return self
-    
+
 
     def predict(self, x,type_="predict"):
         """
@@ -62,8 +65,8 @@ class SVM(object):
         else: # "train"
             result = 0.0 # 在训练时传入的为0，故每次均初始为0
             vector_indices_x = self._X_train.tolist().index(x.tolist())
-            result += np.dot(np.multiply(self._support_multipliers,self._support_vector_labels) ,
-                      self._K[self.support_vector_indices, vector_indices_x])
+            result += np.dot(np.multiply(self._support_multipliers,self._support_vector_labels),
+                             self._K[self._support_vector_indices, vector_indices_x])
         return np.sign(result).item()
 
 
@@ -110,5 +113,70 @@ class SVM(object):
         accuracy = correct / n_samples
         return  accuracy
 
+    def get_function(self):
+        if self._kernel == kernel.Kernel.linear():
+            tmp = map(lambda x,y,z:x*y*z, self._support_multipliers, self._support_vector_labels,self._support_vectors)
+            self.w = sum(tmp)
+            b = self._bias
+            return lambda x:np.dot(self.w,x)+b
+        elif "gaussian" in str(self._kernel):
+            kernel_ = self._kernel
+            tmp = np.array(list(map(lambda a, b: a * b , self._support_multipliers, self._support_vector_labels,)))
+            return lambda x:np.dot(tmp,np.array(list(
+                map(kernel_,self._support_vectors,[x]*self._support_vectors_num)
+            )))+ self._bias
+        else:
+            return 0
 
+
+    def predict_data_set(self,x):
+        if self._kernel == kernel.Kernel.linear():
+            tmp = map(lambda x,y,z:x*y*z, self._support_multipliers, self._support_vector_labels,self._support_vectors)
+            self.w = sum(tmp)
+            b = self._bias
+            # return lambda x:np.dot(self.w,x)+b
+            predict_f = lambda x: np.dot(self.w, x) + b
+            return np.array(list(map(predict_f, x)))
+        elif "gaussian" in str(self._kernel):
+            tmp_li = []
+            for x_i in x:
+                result = self._bias
+                kernel_ = self._kernel
+                for a_i,y_i,sv_i in zip(self._support_multipliers,self._support_vector_labels,
+                        self._support_vectors):
+                    result += a_i*y_i*kernel_(sv_i,x_i)
+                tmp_li.append(result)
+            return np.array(tmp_li)
+        else:
+            return 0
+
+
+    def show_data_set(self, X, y,):
+        # 作training sample数据点的图
+        X,y = (X.A, y.A.flatten()) if type(X)==np.matrixlib.defmatrix.matrix else (X,y)
+        x1_min, x1_max = np.min(X[:, 0]) - 0.5, np.max(X[:, 0]) + 0.5
+        x2_min, x2_max = np.min(X[:, 1]) - 0.5, np.max(X[:, 1]) + 0.5
+        X_1, X_0 = X[y == 1], X[y == -1]
+        plt.plot(X_1[:, 0], X_1[:, 1], "ro")
+        plt.plot(X_0[:, 0], X_0[:, 1], "bo")
+        # 做support vectors 的图
+        try:
+            if (X == self._X_train).all():
+                plt.scatter(self._support_vectors[:, 0], self._support_vectors[:, 1], s=100, c="g")
+                plt.title("SVM classifier in training data set")
+        except:
+            plt.title("SVM classifier in testing data set")
+        # pl.contour做等值线图
+        X1, X2 = np.meshgrid(np.linspace(x1_min, x1_max, 50), np.linspace(x2_min, x2_max, 50))
+        X_ = np.array([[x1, x2] for x1, x2 in zip(X1.flatten(), X2.flatten())])  # x=(x1,x2)，得到所有的(x1,x2)即平面上的点
+        Y = self.predict_data_set(X_).reshape(X1.shape)
+
+        plt.contour(X1, X2, Y, [0.0], colors="k", linewidths=1, origin='lower')
+        # 第四个参数只要Y为0的时候的那根线，故predict里面不要sign，否则下面俩都为0
+        plt.contour(X1, X2, Y - 1, [0.0], colors='grey', linewidths=1, origin='lower')
+        plt.contour(X1, X2, Y + 1, [0.0], colors='grey', linewidths=1, origin='lower')
+        plt.xticks(())
+        plt.yticks(())
+        plt.axis("tight")
+        plt.show()
 
