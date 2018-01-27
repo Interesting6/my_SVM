@@ -25,16 +25,15 @@ class SVM(object):
         """Given the training features X with labels y, returns a SVM
         predictor representing the trained SVM.
         """
-        self._X_train,self._y_train = X, y
+        self._X_train,self._y_train = X.A, y.A.flatten()
         lagrange_multipliers = self._compute_multipliers(X, y)
         # alpha > 0 时，点位于软间隔内的支持向量
         self.support_vector_indices = lagrange_multipliers > MIN_SUPPORT_VECTOR_MULTIPLIER
-        # 以下全为矩阵形式 统一形式
-        self._support_multipliers = np.mat(lagrange_multipliers[self.support_vector_indices]).T
-        self._support_vectors = X[self.support_vector_indices]
-        self._support_vector_labels = y[self.support_vector_indices]
-        self._weights = np.mat(lagrange_multipliers).T
-        self._K = np.mat(self._K)
+        # 统一为数组形式，使得行（或列）向量为一维数组，X为二维数组
+        self._support_multipliers = lagrange_multipliers[self.support_vector_indices]
+        self._support_vectors = X.A[self.support_vector_indices]
+        self._support_vector_labels = y.A.flatten()[self.support_vector_indices]
+        self._weights = lagrange_multipliers
 
         # http://www.cs.cmu.edu/~guestrin/Class/10701-S07/Slides/kernels.pdf
         # bias = y_k - \sum z_i y_i  K(x_k, x_i)  对于软间隔支持向量有这个b=y真-Σalpha*y*K
@@ -43,29 +42,28 @@ class SVM(object):
         bias = np.mean([y_k - self.predict(x_k,type_="train") for (y_k, x_k) in \
             zip(self._support_vector_labels, self._support_vectors)] )
         self._bias = bias
-        logging.info("Bias: %s", self._bias)
-        logging.info("Weights: %s", self._weights)
-        logging.info("Support vectors: %s", self._support_vectors)
-        logging.info("Support vector labels: %s", self._support_vector_labels)
+        # logging.info("Bias: %s", self._bias)
+        # logging.info("Weights: %s", self._weights)
+        # logging.info("Support vectors: %s", self._support_vectors)
+        # logging.info("Support vector labels: %s", self._support_vector_labels)
         print("svm model training done")
         return self
-
+    
 
     def predict(self, x,type_="predict"):
         """
         Computes the SVM prediction on the given features x.
         """
         if type_ == "predict":
-            result = self._bias # 在训练时传入的为0故每次均初始为0，预测时（训练好后self._bias为b）为为训练好的b
+            result = self._bias # 在预测时传入训练好后self._bias（训练好的b）
             tmp = np.multiply(self._support_multipliers, self._support_vector_labels)
-            for t_i, x_i in zip(tmp, self._support_vectors,):
-                result += t_i * self._kernel(x_i, x)
+            tmp2 = np.array(list(map(self._kernel, self._support_vectors,[x]*self._support_vectors.shape[0])))
+            result += np.dot(tmp,tmp2)
         else: # "train"
-            result = 0.0
-            x = x.A.flatten().tolist()
-            vector_indices_x = self._X_train.tolist().index(x)
-            result += np.multiply(self._support_multipliers,self._support_vector_labels).T * \
-                      self._K[self.support_vector_indices, vector_indices_x]
+            result = 0.0 # 在训练时传入的为0，故每次均初始为0
+            vector_indices_x = self._X_train.tolist().index(x.tolist())
+            result += np.dot(np.multiply(self._support_multipliers,self._support_vector_labels) ,
+                      self._K[self.support_vector_indices, vector_indices_x])
         return np.sign(result).item()
 
 
