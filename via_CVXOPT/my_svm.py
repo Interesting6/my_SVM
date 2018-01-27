@@ -29,8 +29,8 @@ class SVM(object):
         lagrange_multipliers = self._compute_multipliers(X, y)
         # alpha > 0 时，点位于软间隔内的支持向量
         self.support_vector_indices = lagrange_multipliers > MIN_SUPPORT_VECTOR_MULTIPLIER
-
-        self._support_multipliers = lagrange_multipliers[self.support_vector_indices]
+        # 以下全为矩阵形式 统一形式
+        self._support_multipliers = np.mat(lagrange_multipliers[self.support_vector_indices]).T
         self._support_vectors = X[self.support_vector_indices]
         self._support_vector_labels = y[self.support_vector_indices]
         self._weights = np.mat(lagrange_multipliers).T
@@ -49,6 +49,7 @@ class SVM(object):
         logging.info("Support vector labels: %s", self._support_vector_labels)
         print("svm model training done")
         return self
+
 
     def predict(self, x,type_="predict"):
         """
@@ -105,4 +106,6 @@ class SVM(object):
                 correct += 1
         accuracy = correct / n_samples
         return  accuracy
+
+
 
