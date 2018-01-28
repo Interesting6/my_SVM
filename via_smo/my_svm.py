@@ -9,60 +9,148 @@
 
 import numpy as np
 import pickle
+from kernel import Kernel
+from _functools import reduce
 
+MIN_SUPPORT_VECTOR_MULTIPLIER = 1e-5
+toler = 1e-4  # KKT条件之一
 
 class SVM(object):
-    def __init__(self, C=1, toler=0.001, maxIter=500, kernel_option = ("",0)):
-        # self.train_x = np.mat(dataSet)  # 训练数据集dataSet, labels,
-        # self.train_y = np.mat(labels)   # 测试数据集
-        # self.train_y = self.train_y.T if np.shape(self.train_y)[0] == 1 else self.train_y # 将其转化为列向量
-        # self.n_samples = np.shape(dataSet)[0]  # 训练样本的个数
-        self.C = C  # 惩罚参数
-        self.toler = toler # 迭代的终止条件之一
-        # self.alphas = np.mat(np.zeros((self.n_samples, 1))) # 拉格朗日乘子（一个全0的列向量）
-        self.b = 0  # 阈值
-        self.max_iter = maxIter  # 最大迭代次数
-        # self.error_tmp = np.mat(np.zeros((self.n_samples, 2)))  # 保存E的缓存
-        self.kernel_opt = kernel_option # 选用的核函数及其参数
-        # self.kernel_mat = self.calc_kernel(self.train_x, self.kernel_opt)    # 核函数的输出
+    def __init__(self, C=1, maxIter=500, kernel_option = ("linear",0)):
+        self._C = C  # 惩罚参数
+        # self._toler = toler # 迭代的终止条件之一
+        self._b = 0  # 阈值
+        self._max_iter = maxIter  # 最大迭代次数
+        self._kernel_opt = kernel_option # 选用的核函数及其参数
+        self._kernel = self.get_kernel()
 
-    def SVM_training(self, dataSet, labels, ):
+    def get_kernel(self):
+        if self._kernel_opt[0] == "rbf":
+            return Kernel.gaussian(self._kernel_opt[1])
+        elif self._kernel_opt[0] == "linear":
+            return Kernel.linear()
+        elif self._kernel_opt[0] == "poly":
+            return Kernel._polykernel(self._kernel_opt[1],self._kernel_opt[2])
+        else:
+            return 0
+
+    def _calc_kernel_matrix(self, ):
+        """计算核函数的矩阵
+        :param train_x(matrix): 训练样本的特征值
+        :param kernel_option(tuple):  核函数的类型以及参数
+        :return: kernel_matrix(matrix):  样本的核函数的值
+        """
+        f = lambda x:np.array(list(map(self._kernel, self._X_train, [x] * self.n_samples)))
+        K = np.array(list(map(f, self._X_train)))
+        return K
+
+    def train(self, dataSet, labels, ):
         # 1.输入数据集
-        # train_x_m, train_y_m = np.mat(train_x), np.mat(train_y)dataSet, labels,
-        self.train_x = np.mat(dataSet)  # 训练数据集
-        self.train_y = np.mat(labels)   # 测试数据集
-        self.train_y = self.train_y.T if np.shape(self.train_y)[0] == 1 else self.train_y # 将其转化为列向量
+        dataSet, labels = (dataSet.A, labels.A.flatten()) if type(dataSet)\
+                == np.matrixlib.defmatrix.matrix else (dataSet, labels)
+        self._X_train, self._y_train = dataSet , labels   # 训练数据集及标签
         self.n_samples = np.shape(dataSet)[0]  # 训练样本的个数
-        self.alphas = np.mat(np.zeros((self.n_samples, 1)))  # 拉格朗日乘子（一个全0的列向量）
-        self.error_tmp = np.mat(np.zeros((self.n_samples, 2)))  # 保存E的缓存
-        self.kernel_mat = self.calc_kernel(self.train_x, self.kernel_opt)  # 核函数的输出
+        self.alphas = np.zeros(self.n_samples )  # 拉格朗日乘子（一个全0的一维向量）
+        self._error_tmp = np.zeros((self.n_samples, 2))  # 保存E的缓存
+        self._kernel_mat = self._calc_kernel_matrix()  # 核函数矩阵
         # 2.开始训练
-        entireSet = True
-        alpha_pairs_changed = 0
+        entire_set = True
+        alpha_pairs_changed = 0 # 两个alpha对改变的次数
         iteration = 0
 
-        while iteration<self.max_iter and (alpha_pairs_changed>0 or entireSet):
+        while iteration<self._max_iter and (alpha_pairs_changed>0 or entire_set):
+            # 主要在(alpha1,alpha2)不改变时，这时遍历了所有样本，entire_et由最后一步变为False，while结束
             print("\t iteration: ",iteration)
             alpha_pairs_changed = 0
 
-            if entireSet:   # 对所有样本
+            if entire_set:  # 对所有样本
                 for x in range(self.n_samples):
                     alpha_pairs_changed += self.choose_and_update(x)
                 iteration += 1
-            else:   # 对非边界样本
+            else:  # 对非边界样本
                 bound_samples = []
                 for i in range(self.n_samples):
-                    if self.alphas[i, 0] > 0 and self.alphas[i, 0] < self.C:
+                    if self.alphas[i] > 0 and self.alphas[i] < self._C:
                         bound_samples.append(i)
                 for x in bound_samples:
                     alpha_pairs_changed += self.choose_and_update(x)
                 iteration += 1
 
-            if entireSet:
-                entireSet = False
-            elif alpha_pairs_changed == 0:
-                entireSet = True
+            if entire_set:
+                entire_set = False
+            elif alpha_pairs_changed == 0: # 在遍历边界样本后，alpha对没改变，则遍历所有样本
+                entire_set = True
+
+        self._support_vector_indices = self.alphas > MIN_SUPPORT_VECTOR_MULTIPLIER
+        self._support_vectors_num = len(self._support_vector_indices)
+        # 统一为数组形式，使得行（或列）向量为一维数组，X为二维数组
+        self._support_multipliers = self.alphas[self._support_vector_indices]
+        self._support_vectors = self._X_train[self._support_vector_indices]
+        self._support_vector_labels = self._y_train[self._support_vector_indices]
         return self
+
+    def choose_and_update(self, alpha_index_i):
+        """判断和选择两个alpha进行更新
+        :param alpha_index_i(int): 选出的第一个变量的index
+        :return:
+        """
+        error_i = self.cal_error(alpha_index_i) # 计算第一个样本的E_i
+        alpha_i,X_i,y_i = self.alphas[alpha_index_i].copy(), self._X_train[alpha_index_i].copy(), self._y_train[alpha_index_i].copy() # 深拷贝
+        if (y_i*error_i<-toler and alpha_i<self._C) or (y_i*error_i>toler and alpha_i>0):
+            # 第一个变量违反KKT条件
+            # 1.选择第二个变量
+            alpha_index_j, error_j = self.select_second_sample_j(alpha_index_i, error_i)
+            alpha_j,X_j, y_j = self.alphas[alpha_index_j].copy(),self._X_train[alpha_index_j].copy(), self._y_train[alpha_index_j].copy() # 深拷贝
+            alpha_i_old = alpha_i.copy()
+            alpha_j_old = alpha_j.copy()
+            # 2.计算上下界
+            if y_i != y_j:
+                L = max(0, alpha_j - alpha_i)
+                H = min(self._C, self._C + alpha_j - alpha_i)
+            else:
+                L = max(0, alpha_j + alpha_i - self._C)
+                H = min(self._C, alpha_j + alpha_i)
+            if L == H:
+                return 0
+            # 3.计算eta
+            eta = self._kernel_mat[alpha_index_i, alpha_index_i] + self._kernel_mat[alpha_index_j, alpha_index_j] - 2.0 * self._kernel_mat[alpha_index_i, alpha_index_j]
+            if eta <= 0: # 因为这个eta>=0
+                return 0
+            # 4.更新alpha_j
+            self.alphas[alpha_index_j] += y_j * (error_i - error_j) / eta
+            alpha_j = self.alphas[alpha_index_j].copy()
+            # 5.根据范围确实最终的alpha_j
+            if alpha_j > H:
+                self.alphas[alpha_index_j] = H
+                # 只需要改self.alphas[alpha_index_j]，alpha_j就会跟着改变，但不能改alpha_j，否则以后不会跟着前者改变
+            if alpha_j < L:
+                self.alphas[alpha_index_j] = L
+            alpha_j = self.alphas[alpha_index_j]
+            # 6.判断是否结束
+            if abs(alpha_j_old-alpha_j)<1e-5:
+                self._update_error_tmp(alpha_index_j)
+                return 0
+            # 7.更新alpha_i
+            self.alphas[alpha_index_i] += y_i * y_j * (alpha_j_old - alpha_j)
+            alpha_i = self.alphas[alpha_index_i].copy()
+            # 8.更新b
+            b1 = self._b - error_i - y_i * self._kernel_mat[alpha_index_i, alpha_index_i] * (alpha_i - alpha_i_old) \
+                 - y_j * self._kernel_mat[alpha_index_i, alpha_index_j] * (alpha_j - alpha_j_old)
+            b2 = self._b - error_j - y_i * self._kernel_mat[alpha_index_i, alpha_index_j] * (alpha_i - alpha_i_old) \
+                 - y_j * self._kernel_mat[alpha_index_j, alpha_index_j] * (alpha_j - alpha_j_old)
+            if 0<alpha_i and alpha_i<self._C:
+                self._b = b1
+            elif 0<alpha_j and alpha_j<self._C:
+                self._b = b2
+            else:
+                self._b = (b1 + b2) / 2.0
+            # 9.更新error
+            self._update_error_tmp(alpha_index_j)
+            self._update_error_tmp(alpha_index_i)
+            return 1
+        else:
+            return 0
+
 
     def cal_error(self, alpha_index_k):
         """误差值的计算
@@ -70,9 +158,18 @@ class SVM(object):
         :return: error_k(float): alpha_k对应的误差值
         np.multiply(svm.alphas,svm.train_y).T 为一个行向量（αy,αy,αy,αy,...,αy）
         """
-        predict_k = float(np.multiply(self.alphas, self.train_y).T * self.kernel_mat[:, alpha_index_k] + self.b)
-        error_k = predict_k - float(self.train_y[alpha_index_k])
+        tmp = np.multiply(self.alphas, self._y_train).T
+        predict_k = float(np.dot(tmp, self._kernel_mat[:, alpha_index_k]) + self._b)
+        error_k = predict_k - float(self._y_train[alpha_index_k])
         return error_k
+
+    def _update_error_tmp(self, alpha_index_k):
+        """重新计算误差值，并对其标记为已被优化
+        :param alpha_index_k: 要计算的变量α
+        :return: index为k的alpha新的误差
+        """
+        error = self.cal_error(alpha_index_k)
+        self._error_tmp[alpha_index_k] = [1, error]
 
     def select_second_sample_j(self, alpha_index_i, error_i):
         """选择第二个变量
@@ -80,8 +177,8 @@ class SVM(object):
         :param error_i(float): E_i
         :return:第二个变量alpha_j的index_j和误差值E_j
         """
-        self.error_tmp[alpha_index_i] = [1, error_i] # 用来标记已被优化
-        candidate_alpha_list = np.nonzero(self.error_tmp[:, 0].A)[0]  # 因为是列向量，列数[1]都为0，只需记录行数[0]
+        self._error_tmp[alpha_index_i] = [1, error_i] # 1用来标记已被优化
+        candidate_alpha_list = np.nonzero(self._error_tmp[:, 0])[0]  # 因为是列向量，列数[1]都为0，只需记录行数[0]
         max_step,alpha_index_j,error_j = 0,0,0
 
         if len(candidate_alpha_list)>1:
@@ -99,151 +196,48 @@ class SVM(object):
             error_j = self.cal_error(alpha_index_j)
         return alpha_index_j, error_j
 
-    def update_error_tmp(self, alpha_index_k):
-        """重新计算误差值，并对其标记为已被优化
-        :param alpha_index_k: 要计算的变量α
-        :return: index为k的alpha新的误差
-        """
-        error = self.cal_error(alpha_index_k)
-        self.error_tmp[alpha_index_k] = [1, error]
 
 
-    def choose_and_update(self, alpha_index_i):
-        """判断和选择两个alpha进行更新
-        :param alpha_index_i(int): 选出的第一个变量的index
-        :return:
-        """
-        error_i = self.cal_error(alpha_index_i) # 计算第一个样本的E_i
-        if (self.train_y[alpha_index_i]*error_i<-self.toler) and (self.alphas[alpha_index_i]<self.C) \
-                or (self.train_y[alpha_index_i]*error_i>self.toler) and (self.alphas[alpha_index_i]>0):
-            # 1.选择第二个变量
-            alpha_index_j, error_j = self.select_second_sample_j(alpha_index_i, error_i)
-            alpha_i_old = self.alphas[alpha_index_i].copy()
-            alpha_j_old = self.alphas[alpha_index_j].copy()
-            # 2.计算上下界
-            if self.train_y[alpha_index_i] != self.train_y[alpha_index_j]:
-                L = max(0, self.alphas[alpha_index_j] - self.alphas[alpha_index_i])
-                H = min(self.C, self.C + self.alphas[alpha_index_j] - self.alphas[alpha_index_i])
-            else:
-                L = max(0, self.alphas[alpha_index_j] + self.alphas[alpha_index_i] - self.C)
-                H = min(self.C, self.alphas[alpha_index_j] + self.alphas[alpha_index_i])
-            if L == H:
-                return 0
-            # 3.计算eta
-            eta = self.kernel_mat[alpha_index_i, alpha_index_i] + self.kernel_mat[alpha_index_j, alpha_index_j] - 2.0 * self.kernel_mat[alpha_index_i, alpha_index_j]
-            if eta <= 0: # 因为这个eta>=0
-                return 0
-            # 4.更新alpha_j
-            self.alphas[alpha_index_j] += self.train_y[alpha_index_j] * (error_i - error_j) / eta
-            # 5.根据范围确实最终的j
-            if self.alphas[alpha_index_j] > H:
-                self.alphas[alpha_index_j] = H
-            if self.alphas[alpha_index_j] < L:
-                self.alphas[alpha_index_j] = L
+    def get_predict_func(self):
+        return lambda x: self._b + sum(map(lambda a,b,c,d:a * b *
+            self._kernel(c, d),self._support_multipliers, self._support_vector_labels,
+            self._support_vectors,[x]*self._support_vectors_num))
 
-            # 6.判断是否结束
-            if abs(alpha_j_old-self.alphas[alpha_index_j])<0.00001:
-                self.update_error_tmp( alpha_index_j)
-                return 0
-            # 7.更新alpha_i
-            self.alphas[alpha_index_i] += self.train_y[alpha_index_i] * self.train_y[alpha_index_j] * (alpha_j_old - self.alphas[alpha_index_j])
-            # 8.更新b
-            b1 = self.b - error_i - self.train_y[alpha_index_i] * self.kernel_mat[alpha_index_i, alpha_index_i] * (self.alphas[alpha_index_i] - alpha_i_old) \
-                 - self.train_y[alpha_index_j] * self.kernel_mat[alpha_index_i, alpha_index_j] * (self.alphas[alpha_index_j] - alpha_j_old)
-            b2 = self.b - error_j - self.train_y[alpha_index_i] * self.kernel_mat[alpha_index_i, alpha_index_j] * (self.alphas[alpha_index_i] - alpha_i_old) \
-                 - self.train_y[alpha_index_j] * self.kernel_mat[alpha_index_j, alpha_index_j] * (self.alphas[alpha_index_j] - alpha_j_old)
-            if 0<self.alphas[alpha_index_i] and self.alphas[alpha_index_i]<self.C:
-                self.b = b1
-            elif 0<self.alphas[alpha_index_j] and self.alphas[alpha_index_j]<self.C:
-                self.b = b2
-            else:
-                self.b = (b1 + b2) / 2.0
-            # 9.更新error
-            self.update_error_tmp( alpha_index_j)
-            self.update_error_tmp(alpha_index_i)
-            return 1
-        else:
-            return 0
-
-    def svm_predict(self, test_data_x):
+    def predict(self, x):
         """对输入的数据预测（预测一个数据）
-        :param test_data_x: 要预测的数据（一个）
+        :param x: 要预测的数据（一个）
         :return: 预测值
         """
-        kernel_value = self.calc_kernel_value(self.train_x, test_data_x, self.kernel_opt)
-        alp = self.alphas
-        predict = np.multiply(self.train_y, self.alphas).T * kernel_value + self.b
+        kernel_value = np.array(list(map(self._kernel, self._X_train, [x] * self.n_samples)))
+        predict = np.dot(np.multiply(self._y_train, self.alphas) * kernel_value) + self._b
         return predict
 
-    def get_prediction(self,test_data):
+    def predict_data_set(self, data_X):
         '''对样本进行预测（预测多个数据）
         input:  test_data(mat):测试数据
         output: prediction(list):预测所属的类别
         '''
-        m = np.shape(test_data)[0]
-        prediction = []
-        for i in range(m):
-            predict = self.svm_predict(test_data[i, :])
-            prediction.append(str(np.sign(predict)[0, 0]))
-        return prediction
+        predict_f = self.get_predict_func()
+        return np.array(list(map(predict_f, data_X)))
 
-    def cal_accuracy(self, test_x, test_y):
-        """计算准确率
-        :param test_x:
-        :param test_y:
-        :return:
+    def calc_accuracy(self, test_x, test_y):
+        """
+        calculates the accuracy.
+
         """
         n_samples = np.shape(test_x)[0]
-        correct = 0.0
-        for i in range(n_samples):
-            predict = self.svm_predict(test_x[i, :])
-            if np.sign(predict) == np.sign(test_y[i]):
-                correct += 1
+        test_x, test_y = (test_x.A, test_y.A.flatten()) if type(test_x) \
+                 == np.matrixlib.defmatrix.matrix else (test_x, test_y)
+        predict_arr = self.predict_data_set(test_x)
+        predict_arr = np.sign(predict_arr)
+        right_arr = predict_arr == test_y
+        correct = sum(right_arr)
         accuracy = correct / n_samples
-        return  accuracy
-
-    def get_train_accracy(self):
-        accuracy = self.cal_accuracy(self.train_x, self.train_y)
         return accuracy
 
-    def calc_kernel(self, train_x, kernel_option):
-        """计算核函数的矩阵
-        :param train_x(matrix): 训练样本的特征值
-        :param kernel_option(tuple):  核函数的类型以及参数
-        :return: kernel_matrix(matrix):  样本的核函数的值
-        """
-        m = np.shape(train_x)[0]
-        kernel_matrix = np.mat(np.zeros((m,m)))
-        for i in range(m):
-            kernel_matrix[:,i] = self.calc_kernel_value(train_x, train_x[i,:], kernel_option)
-        return kernel_matrix
-
-    def calc_kernel_value(self,train_x, train_x_i, kernel_option):
-        """样本之间的核函数值
-        :param train_x(matrix): 训练样本
-        :param train_x_i(matrix):   第i个训练样本 一个行向量
-        :param kernel_option(tuple):   核函数的类型以及参数
-        :return: kernel_value(matrix):  样本之间的核函数值
-        """
-        kernel_type = kernel_option[0]
-        m = np.shape(train_x)[0]
-        kernel_value = np.mat(np.zeros((m,1)))
-        if kernel_type == "rbf":  # 高斯核函数
-            sigma = kernel_option[1]
-            if sigma == 0:
-                sigma = 1.0
-            for i in range(m):
-                diff = train_x[i, :] - train_x_i
-                kernel_value[i] = np.exp(diff*diff.T/(-2.0*sigma**2))  # 分子为差的2范数的平方
-        elif kernel_type == "polynomial":
-            p = kernel_option[1]
-            for i in range(m):
-                kernel_value[i] = (train_x[i, :]*train_x_i.T + 1)**p
-        else:
-            kernel_value = train_x*train_x_i.T  # 直接一个m*m矩阵×一个m*1的矩阵
-        return kernel_value
-
-
+    def get_train_accuracy(self):
+        accuracy = self.calc_accuracy(self._X_train, self._y_train)
+        return accuracy
 
     def save_svm_model(self, model_file):
         with open(model_file, "w") as f:
@@ -269,4 +263,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-	
