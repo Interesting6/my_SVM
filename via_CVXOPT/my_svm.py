@@ -13,13 +13,21 @@ class SVM(object):
         self._kernel = kernel
         self._c = c
 
+    # def _gram_matrix(self, X):
+    #     n_samples, n_features = X.shape
+    #     K = np.zeros((n_samples, n_samples))
+    #     # TODO(tulloch) - vectorize
+    #     for i, x_i in enumerate(X):
+    #         for j, x_j in enumerate(X):
+    #             K[i, j] = self._kernel(x_i, x_j)
+    #     return K
+
     def _gram_matrix(self, X):
         n_samples, n_features = X.shape
         K = np.zeros((n_samples, n_samples))
         # TODO(tulloch) - vectorize
-        for i, x_i in enumerate(X):
-            for j, x_j in enumerate(X):
-                K[i, j] = self._kernel(x_i, x_j)
+        f = lambda x:np.array(list(map(self._kernel,X,[x]*n_samples)))
+        K = np.array(list(map(f,X)))
         return K
 
     def training(self, X, y):
@@ -38,34 +46,26 @@ class SVM(object):
         self._support_vector_labels = self._y_train[self._support_vector_indices]
         # self._weights = lagrange_multipliers
 
-        # http://www.cs.cmu.edu/~guestrin/Class/10701-S07/Slides/kernels.pdf
         # bias = y_k - \sum z_i y_i  K(x_k, x_i)  对于软间隔支持向量有这个b=y真-Σalpha*y*K
-        # Thus we can just predict an example with bias of zero, and
-        # compute error.
-        bias = np.mean([y_k - self.predict(x_k,type_="train") for (y_k, x_k) in \
+        # Thus we can just predict an example with bias of zero, and compute error.
+        bias = np.mean([y_k - self.predict_in_train(x_k) for (y_k, x_k) in \
             zip(self._support_vector_labels, self._support_vectors)] )
         self._bias = bias
-        # logging.info("Bias: %s", self._bias)
-        # logging.info("Weights: %s", self._weights)
-        # logging.info("Support vectors: %s", self._support_vectors)
-        # logging.info("Support vector labels: %s", self._support_vector_labels)
+        self.predict = self.get_predict_func()  # using to predict one vector 
+
         print("svm model training done")
         return self
 
-    def predict(self, x,type_="predict"):
-        """ predict one vector
+
+    def predict_in_train(self, x,):
+        """ predict one vector in training
         Computes the SVM prediction on the given features x.
         """
-        if type_ == "predict":
-            result = self._bias # 在预测时传入训练好后self._bias（训练好的b）
-            tmp = np.multiply(self._support_multipliers, self._support_vector_labels)
-            tmp2 = np.array(list(map(self._kernel, self._support_vectors,[x]*self._support_vectors.shape[0])))
-            result += np.dot(tmp,tmp2)
-        else: # "train"
-            result = 0.0 # 在训练时传入的为0，故每次均初始为0
-            vector_indices_x = self._X_train.tolist().index(x.tolist())
-            result += np.dot(np.multiply(self._support_multipliers,self._support_vector_labels),
-                             self._K[self._support_vector_indices, vector_indices_x])
+        # "train"
+        result = 0.0 # 在训练时传入的为0，故每次均初始为0
+        vector_indices_x = self._X_train.tolist().index(x.tolist())
+        tmp = np.multiply(self._support_multipliers,self._support_vector_labels)
+        result += np.dot(tmp,self._K[self._support_vector_indices, vector_indices_x])
         return np.sign(result).item()
 
 
@@ -75,10 +75,7 @@ class SVM(object):
 
         self._K = self._gram_matrix(X)
         # Solves
-        # min 1/2 x^T P x + q^T x
-        # s.t.
-        #  Gx \coneleq h
-        #  Ax = b
+        # min 1/2 x^T P x + q^T x  s.t.  Gx \coneleq h  &  Ax = b
 
         P = cvxopt.matrix(np.outer(y, y) * self._K)
         q = cvxopt.matrix(-1 * np.ones(n_samples))
@@ -104,19 +101,23 @@ class SVM(object):
 
         """
         n_samples = np.shape(test_x)[0]
-        correct = 0.0
-        for i in range(n_samples):
-            predict = self.predict(test_x[i, :])
-            if predict == np.sign(test_y[i]):
-                correct += 1
+        test_x, test_y = (test_x.A, test_y.A.flatten()) if type(test_x) \
+                 == np.matrixlib.defmatrix.matrix else (test_x, test_y)
+        predict_arr = self.predict_data_set(test_x)
+        predict_arr = np.sign(predict_arr)
+        right_arr = predict_arr == test_y
+        correct = sum(right_arr)
         accuracy = correct / n_samples
-        return  accuracy
+        return accuracy
+
+    def get_predict_func(self):
+        return lambda x: self._bias + sum(map(lambda a,b,c,d:a * b *
+            self._kernel(c, d),self._support_multipliers, self._support_vector_labels,
+            self._support_vectors,[x]*self._support_vectors_num))
 
     def predict_data_set(self, data_x):
         # predict lots of vector
-        predict_f = lambda x: self._bias + sum(map(lambda a,b,c,d:a * b *
-            self._kernel(c, d),self._support_multipliers, self._support_vector_labels,
-            self._support_vectors,[x]*self._support_vectors_num))
+        predict_f = self.get_predict_func()
         return np.array(list(map(predict_f, data_x)))
 
     def show_data_set(self, X, y,):
