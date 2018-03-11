@@ -3,8 +3,9 @@
 """ 
 @version: py3.5        @license: Apache Licence  
 @author: 'Treamy'    @contact: chenymcan@gmail.com 
-@file: SVM2.py      @software: PyCharm 
+@file: SVM_RD.py      @software: PyCharm 
 @time: 2018/2/2 15:10 @site: www.ymchen.cn
+@path: E:/python1/exm/SVMRD/
 """
 
 import numpy as np
@@ -66,10 +67,6 @@ def gram_test_trans(alphas, y, K_train_old, K_test_old):
     K_new = np.zeros_like(K_test_old)
     for i in range(i_samples):
         for j in  range(j_samples):
-            # print("temp:",temp.shape)
-            # print("K_test_old:",K_test_old.shape)
-            # print("K_test_old[:,i]:", K_test_old[:,i].shape)
-            # print(np.dot(temp, K_test_old[:, i]))
             K_new[i,j] = K_test_old[i, j] - np.dot(temp, K_train_old[:, i]) * np.dot(temp, K_test_old[:, j]) / mod_w
     return K_new
 
