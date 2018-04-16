@@ -36,6 +36,8 @@ class Kernel(object):
     def gaussian(sigma):
         return lambda d: np.exp(- d / (2 * sigma ** 2))
 
+
+
 class SVMdecom(object):
     def __init__(self, X_train, y_train, *kernel):
         self.X_train = X_train
@@ -137,62 +139,77 @@ class SVMdecom(object):
         D_ = self.get_D(self.X_train, X_test)
         D__ = self.get_D(X_test, X_test)
 
-        K = self.kernel[0](D)
-        K_ = self.kernel[0](D_)
-        K__ = self.kernel[0](D__)
+        # K = self.kernel[0](D)
+        # K_ = self.kernel[0](D_)
+        # K__ = self.kernel[0](D__)
+        #
+        # alpha = self.compute_multipliers(K)
+        # alpha_y = np.multiply(alpha, self.y_train)
+        # mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
+        #
+        # X_train_decom[:, 0] = np.dot(alpha_y, K) / mod_w  # 1*n
+        # X_test_decom[:, 0] = np.dot(alpha_y, K_) / mod_w  # 1*m
+        #
+        # hat_K__ = self.get_hat_K__(K__,K_,alpha_y,mod_w)
+        # hat_K_ = self.get_hat_K_(K_,K,alpha_y,mod_w)
+        # hat_K = self.get_hat_K(K,alpha_y,mod_w)
+        #
+        # D = self.update_D(hat_K)
+        # D_ = self.update_D_(hat_K,hat_K_,hat_K__)
+        # D__ = self.update_D__(hat_K__)
+        #
+        #
+        # K = self.kernel[1](D)
+        # K_ = self.kernel[1](D_)
+        # K__ = self.kernel[1](D__)
+        # alpha = self.compute_multipliers(K)
+        # alpha_y = np.multiply(alpha, self.y_train)
+        # mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
+        # X_train_decom[:, 1] = np.dot(alpha_y, K) / mod_w  # 1*n
+        # X_test_decom[:, 1] = np.dot(alpha_y, K_) / mod_w  # 1*m
+        # hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
+        # hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
+        # hat_K = self.get_hat_K(K, alpha_y, mod_w)
+        # D = self.update_D(hat_K)
+        # D_ = self.update_D_(hat_K,hat_K_,hat_K__)
+        # D__ = self.update_D__(hat_K__)
+        #
+        # K = self.kernel[2](D)
+        # K_ = self.kernel[2](D_)
+        # K__ = self.kernel[2](D__)
+        # alpha = self.compute_multipliers(K)
+        # alpha_y = np.multiply(alpha, self.y_train)
+        # mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
+        # X_train_decom[:, 2] = np.dot(alpha_y, K) / mod_w  # 1*n
+        # X_test_decom[:, 2] = np.dot(alpha_y, K_) / mod_w  # 1*m
+        # hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
+        # hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
+        # hat_K = self.get_hat_K(K, alpha_y, mod_w)
+        # D = self.update_D(hat_K)
+        # D_ = self.update_D_(hat_K,hat_K_,hat_K__)
+        # D__ = self.update_D__(hat_K__)
 
-        alpha = self.compute_multipliers(K)
-        alpha_y = np.multiply(alpha, self.y_train)
-        mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
-
-        X_train_decom[:, 0] = np.dot(alpha_y, K) / mod_w  # 1*n
-        X_test_decom[:, 0] = np.dot(alpha_y, K_) / mod_w  # 1*m
-
-        hat_K__ = self.get_hat_K__(K__,K_,alpha_y,mod_w)
-        hat_K_ = self.get_hat_K_(K_,K,alpha_y,mod_w)
-        hat_K = self.get_hat_K(K,alpha_y,mod_w)
-
-        D = self.update_D(hat_K)
-        D_ = self.update_D_(hat_K,hat_K_,hat_K__)
-        D__ = self.update_D__(hat_K__)
-
-
-        K = self.kernel[1](D)
-        K_ = self.kernel[1](D_)
-        K__ = self.kernel[1](D__)
-        alpha = self.compute_multipliers(K)
-        alpha_y = np.multiply(alpha, self.y_train)
-        mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
-        X_train_decom[:, 1] = np.dot(alpha_y, K) / mod_w  # 1*n
-        X_test_decom[:, 1] = np.dot(alpha_y, K_) / mod_w  # 1*m
-        hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
-        hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
-        hat_K = self.get_hat_K(K, alpha_y, mod_w)
-        D = self.update_D(hat_K)
-        D_ = self.update_D_(hat_K,hat_K_,hat_K__)
-        D__ = self.update_D__(hat_K__)
-
-        K = self.kernel[2](D)
-        K_ = self.kernel[2](D_)
-        K__ = self.kernel[2](D__)
-        alpha = self.compute_multipliers(K)
-        alpha_y = np.multiply(alpha, self.y_train)
-        mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
-        X_train_decom[:, 2] = np.dot(alpha_y, K) / mod_w  # 1*n
-        X_test_decom[:, 2] = np.dot(alpha_y, K_) / mod_w  # 1*m
-        hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
-        hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
-        hat_K = self.get_hat_K(K, alpha_y, mod_w)
-        D = self.update_D(hat_K)
-        D_ = self.update_D_(hat_K,hat_K_,hat_K__)
-        D__ = self.update_D__(hat_K__)
-
+        for i in range(m):
+            K = self.kernel[i](D)
+            K_ = self.kernel[i](D_)
+            K__ = self.kernel[i](D__)
+            alpha = self.compute_multipliers(K)
+            alpha_y = np.multiply(alpha, self.y_train)
+            mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
+            X_train_decom[:, i] = np.dot(alpha_y, K) / mod_w  # 1*n
+            X_test_decom[:, i] = np.dot(alpha_y, K_) / mod_w  # 1*m
+            hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
+            hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
+            hat_K = self.get_hat_K(K, alpha_y, mod_w)
+            D = self.update_D(hat_K)
+            D_ = self.update_D_(hat_K, hat_K_, hat_K__)
+            D__ = self.update_D__(hat_K__)
 
         return X_train_decom,X_test_decom
 
     def plot(self, X_train_decom, X_test_decom, y_test, dataname,u=1):
         fig = plt.figure()
-        fig.suptitle("对{}数据集降维".format(dataname)+"，高斯核u="+str(u), )
+        fig.suptitle("对{}数据集降维".format(dataname) ) # +"，高斯核u="+str(u),
         plt.subplot(2, 2, 1)
         X_1, X_0 = X_train_decom[self.y_train == 1], X_train_decom[self.y_train == -1]
         plt.scatter(X_1[:, 0], X_1[:, 1], color="r", marker=".")
@@ -241,9 +258,10 @@ if __name__ == "__main__":
     gauss_ker_1 = Kernel.gaussian(30)
     gauss_ker_2 = Kernel.gaussian(0.6)
     gauss_ker_3 = Kernel.gaussian(0.6)
-    gauss_ker = [gauss_ker_1,gauss_ker_2,gauss_ker_3]
+    gauss_ker_4 = Kernel.gaussian(10)
+    gauss_ker = [gauss_ker_1,gauss_ker_2,gauss_ker_3,gauss_ker_4]
     decomp = SVMdecom(X_train,y_train,*gauss_ker)
-    X_train_decom, X_test_decom = decomp.decom(X_test)
+    X_train_decom, X_test_decom = decomp.decom(X_test,m=4)
 
     _1nn = KNeighborsClassifier(1)
     _1nn.fit(X_train,y_train)
@@ -252,7 +270,10 @@ if __name__ == "__main__":
     _1nn.fit(X_train_decom[:,[0,1]],y_train)
     print("1nn after decomp 2:",_1nn.score(X_test_decom[:,[0,1]],y_test))
 
-    _1nn.fit(X_train_decom,y_train)
-    print("1nn after decomp 3:",_1nn.score(X_test_decom,y_test))
+    _1nn.fit(X_train_decom[:,[0,1,2]],y_train)
+    print("1nn after decomp 3:",_1nn.score(X_test_decom[:,[0,1,2]],y_test))
+
+    _1nn.fit(X_train_decom, y_train)
+    print("1nn after decomp 4:", _1nn.score(X_test_decom, y_test))
 
     decomp.plot(X_train_decom,X_test_decom,y_test,"D094")
