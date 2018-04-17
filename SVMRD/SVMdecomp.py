@@ -45,15 +45,10 @@ class SVMdecom(object):
         self.n_train = len(X_train)
         self.kernel = kernel
 
-    def get_D(self,X_1, X_2): # n*l, m*l
-        n_X_1, n_X_2 = len(X_1), len(X_2)  # n, m
-        temp_X_1 = np.array([X_1] * n_X_2) # m*n*l
-        temp_X_2 = np.array([X_2] * n_X_1) # n*m*l
-        temp_X_1 = np.transpose(temp_X_1, (1, 0, 2)) # n*m*l
-        temp = (temp_X_1 - temp_X_2)**2 # n*m*l
-        D = np.sum(temp, axis=2) # n*m
-        return D
 
+    def get_D(self,X_1,X_2):
+        f = lambda x: list(map(lambda s, t: sum((s - t) ** 2), [x] * len(X_1), X_2))
+        return np.array(list(map(f,X_1)))
 
     def compute_multipliers(self, K, c=1):
         # 通过cvxopt求拉格朗日乘子
@@ -68,7 +63,7 @@ class SVMdecom(object):
         h_slack = cvxopt.matrix(np.ones(n) * c)
         G = cvxopt.matrix(np.vstack((G_std, G_slack))) # 上下合并
         h = cvxopt.matrix(np.vstack((h_std, h_slack)))
-        A = cvxopt.matrix(y, (1, n))
+        A = cvxopt.matrix(y, (1, n),"d")
         b = cvxopt.matrix(0.0)
         solution = cvxopt.solvers.qp(P, q, G, h, A, b)
         return np.ravel(solution['x'])  # Lagrange multipliers 拉格朗日乘子
@@ -98,20 +93,14 @@ class SVMdecom(object):
         return hat_K
 
     def update_D_(self,hat_K, hat_K_, hat_K__):
-        n,m = hat_K_.shape
-        D = np.zeros_like(hat_K_)
-        for i in range(n):
-            for j in range(m):
-                D[i,j] = hat_K[i, i] - 2 * hat_K_[i, j] + hat_K__[j, j]
+        diag = np.diag(hat_K)
+        D = diag.reshape((len(diag), 1)) - 2 * hat_K_ + np.diag(hat_K__)
         return D
 
 
     def update_D(self, hat_K):  # update D & D__
-        n,m = hat_K.shape
-        D = np.zeros_like(hat_K)
-        for i in range(n):
-            for j in range(m):
-                D[i,j] = hat_K[i, i] - 2 * hat_K[i, j] + hat_K[j, j]
+        diag = np.diag(hat_K)
+        D = diag.reshape((len(diag), 1)) - 2 * hat_K + diag
         return D
 
     def decom(self,X_test, m = 3):
@@ -186,7 +175,7 @@ def load_data_set(file_path, a=1, b=2):
 
 
 if __name__ == "__main__":
-    dataname = "D036"
+    dataname = "D094"
     X, y = load_data_set("F:/__identity/activity/论文/data/{}.mat".format(dataname))
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4,random_state=0)
@@ -194,18 +183,26 @@ if __name__ == "__main__":
     gauss_ker_1 = Kernel.gaussian(20)
     gauss_ker_2 = Kernel.gaussian(10)
     gauss_ker_3 = Kernel.gaussian(5)
-    gauss_ker_4 = Kernel.gaussian(1)
+    gauss_ker_4 = Kernel.gaussian(5)
     gauss_ker = [gauss_ker_1,gauss_ker_2,gauss_ker_3,gauss_ker_4]
     decomp = SVMdecom(X_train,y_train,*gauss_ker)
     m = 4
     X_train_decom, X_test_decom = decomp.decom(X_test,m=m)
-
     _1nn = KNeighborsClassifier(1)
     _1nn.fit(X_train,y_train)
     print("1nn before decomp:",_1nn.score(X_test,y_test))
 
     for i in range(m):
         _1nn.fit(X_train_decom[:,range(i+1)],y_train)
-        print("1nn after decomp {}:".format(str(i+1)), _1nn.score(X_test_decom[:,range(i+1)],y_test))
+        print("1nn after SVM decomp {}:".format(str(i+1)), _1nn.score(X_test_decom[:,range(i+1)],y_test))
+
+    from sklearn.svm import SVC
+    svm = SVC()
+    svm.fit(X_train,y_train)
+    print("svm in origin",svm.score(X_test,y_test))
+
+    svm.fit(X_train_decom, y_train)
+    print("svm in decomp", svm.score(X_test_decom, y_test))
+
 
     SVMdecom.plot(X_train_decom,y_train, X_test_decom,y_test,dataname)
