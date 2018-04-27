@@ -3,9 +3,10 @@
 """ 
 @version: py3.5        @license: Apache Licence  
 @author: 'Treamy'    @contact: chenymcan@gmail.com 
-@file: decomp.py      @software: PyCharm 
-@time: 2018/4/15 16:55 @site: www.chenymcan.com
+@file: test3.py      @software: PyCharm 
+@time: 2018/4/27 20:30 @site: www.chenymcan.com
 """
+
 
 
 import numpy as np
@@ -18,6 +19,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import minmax_scale
 
 class Kernel(object):
     """Implements list of kernels from
@@ -45,7 +47,6 @@ class SVMdecom(object):
         self.n_train = len(X_train)
         self.kernel = kernel
 
-
     def get_D(self,X_1,X_2):
         f = lambda x: list(map(lambda s, t: sum((s - t) ** 2), [x] * len(X_1), X_2))
         return np.array(list(map(f,X_1)))
@@ -68,67 +69,33 @@ class SVMdecom(object):
         solution = cvxopt.solvers.qp(P, q, G, h, A, b)
         return np.ravel(solution['x'])  # Lagrange multipliers 拉格朗日乘子
 
-    def get_hat_K__(self, K__, K_, alpha_y, mod_w):
-        m = len(K__)
-        hat_K__ = np.zeros_like(K__)
-        for i in range(m):
-            for j in range(m):
-                hat_K__[i,j] = K__[i,j]-np.dot(alpha_y,K_[:,i])*np.dot(alpha_y,K_[:,j])/mod_w
-        return hat_K__
+    def update_G(self, K, Z ):
+        G = K - np.outer(Z,Z)
+        return G
 
-    def get_hat_K_(self, K_,K, alpha_y, mod_w):
-        n,m = K_.shape
-        hat_K_ = np.zeros_like(K_)
-        for i in range(n):
-            for j in range(m):
-                hat_K_[i,j] = K_[i,j]-np.dot(alpha_y,K[:,i])*np.dot(alpha_y,K_[:,j])/mod_w
-        return hat_K_
-
-    def get_hat_K(self, K, alpha_y, mod_w):
-        n = len(K)
-        hat_K = np.zeros_like(K)
-        for i in range(n):
-            for j in range(n):
-                hat_K[i,j] = K[i,j]-np.dot(alpha_y,K[:,i])*np.dot(alpha_y,K[:,j])/mod_w
-        return hat_K
-
-    def update_D_(self,hat_K, hat_K_, hat_K__):
-        diag = np.diag(hat_K)
-        D = diag.reshape((len(diag), 1)) - 2 * hat_K_ + np.diag(hat_K__)
-        return D
-
-
-    def update_D(self, hat_K):  # update D & D__
-        diag = np.diag(hat_K)
-        D = diag.reshape((len(diag), 1)) - 2 * hat_K + diag
+    def update_D(self, G):  # update D & D__
+        diag = np.diag(G)
+        D = diag.reshape((len(diag), 1)) - 2 * G + diag
         return D
 
     def decom(self,X_test, m = 3):
-        i = 0
         n_test =  len(X_test)
-        X_train_decom = np.zeros((self.n_train, m))
-        X_test_decom = np.zeros((n_test, m))
 
-        D = self.get_D(self.X_train, self.X_train)
-        D_ = self.get_D(self.X_train, X_test)
-        D__ = self.get_D(X_test, X_test)
+        X = np.vstack((X_train,X_test))
+        X_decom = np.zeros((len(X), m))
 
+        # G = np.inner(X,X)
+        D = self.get_D(X, X)
         for i in range(m):
             K = self.kernel[i](D)
-            K_ = self.kernel[i](D_)
-            K__ = self.kernel[i](D__)
-            alpha = self.compute_multipliers(K)
+            alpha = self.compute_multipliers(K[:self.n_train,:self.n_train])
             alpha_y = np.multiply(alpha, self.y_train)
-            mod_w = np.dot(np.dot(alpha_y, K), alpha_y)
-            X_train_decom[:, i] = np.dot(alpha_y, K) / np.sqrt(mod_w)  # 1*n
-            X_test_decom[:, i] = np.dot(alpha_y, K_) / np.sqrt(mod_w)   # 1*m
-            hat_K__ = self.get_hat_K__(K__, K_, alpha_y, mod_w)
-            hat_K_ = self.get_hat_K_(K_, K, alpha_y, mod_w)
-            hat_K = self.get_hat_K(K, alpha_y, mod_w)
-            D = self.update_D(hat_K)
-            D_ = self.update_D_(hat_K, hat_K_, hat_K__)
-            D__ = self.update_D(hat_K__)
-
+            mod_w = np.dot(np.dot(alpha_y, K[:self.n_train,:self.n_train]), alpha_y)
+            Z = np.dot(alpha_y, K[:self.n_train,:]) / np.sqrt(mod_w)  # 1*(n+m)
+            X_decom[:, i] = Z
+            G = self.update_G(K, Z)
+            D = self.update_D(G)
+        X_train_decom,X_test_decom = X_decom[:self.n_train,:],X_decom[self.n_train:,:]
         return X_train_decom,X_test_decom
 
     @staticmethod
@@ -175,19 +142,24 @@ def load_data_set(file_path, a=1, b=2):
 
 
 if __name__ == "__main__":
-    dataname = "D094"
+    dataname = "D095"
     X, y = load_data_set("F:/__identity/activity/论文/data/{}.mat".format(dataname))
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4,random_state=0)
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2,random_state=0)
+    X = minmax_scale(X)
+    X_train,y_train = X[:500],y[:500]
+    X_test,y_test = X[500:],y[500:]
+
+
     # 降维，再knn分类
-    gauss_ker_1 = Kernel.gaussian(20)
-    gauss_ker_2 = Kernel.gaussian(10)
-    gauss_ker_3 = Kernel.gaussian(5)
-    gauss_ker_4 = Kernel.gaussian(5)
-    gauss_ker = [gauss_ker_1,gauss_ker_2,gauss_ker_3,gauss_ker_4]
+    # sigma = [1, 1.2, 0.3, 0.1,  0.01,1e-2,1e-3,1e-4,1e-5]
+    sigma = [17.3376, 7.2154, 1.1586, 4.9305, 6.2592]
+    gauss_ker = [Kernel.gaussian(i) for i in sigma]
     decomp = SVMdecom(X_train,y_train,*gauss_ker)
-    m = 4
+    m = 5
     X_train_decom, X_test_decom = decomp.decom(X_test,m=m)
+
+
     _1nn = KNeighborsClassifier(1)
     _1nn.fit(X_train,y_train)
     print("1nn before decomp:",_1nn.score(X_test,y_test))
@@ -203,6 +175,9 @@ if __name__ == "__main__":
 
     svm.fit(X_train_decom, y_train)
     print("svm in decomp", svm.score(X_test_decom, y_test))
+    for i in range(m):
+        svm.fit(X_train_decom[:,range(i+1)],y_train)
+        print("SVM after SVM decomp {}:".format(str(i+1)), svm.score(X_test_decom[:,range(i+1)],y_test))
 
 
     SVMdecom.plot(X_train_decom,y_train, X_test_decom,y_test,dataname)
